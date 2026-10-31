@@ -2,7 +2,7 @@
 //  Lamcy Photography & Videography: page behaviour
 //  The book, the photo viewer and the booking panel.
 // =============================================================
-import { CONTACT, CURRENCY, PHOTOS, CHAPTERS, PAGES, SERVICES } from './data.js?v=2';
+import { CONTACT, CURRENCY, PHOTOS, CHAPTERS, PAGES, SERVICES } from './data.js?v=3';
 
 const $ = (s, el = document) => el.querySelector(s);
 const $$ = (s, el = document) => [...el.querySelectorAll(s)];
@@ -25,8 +25,13 @@ const ZOOM_SVG = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 3h6v6
 
 // Image URL helpers (Unsplash images resize on the fly; local files are used as-is)
 const isRemote = (src) => /^https:\/\/images\.unsplash\.com\//.test(src);
-const sized = (src, w, q = 75) => (isRemote(src) ? `${src}?auto=format&fit=max&w=${w}&q=${q}` : src);
-const srcset = (src) => (isRemote(src) ? [480, 800, 1200, 1600].map((w) => `${sized(src, w)} ${w}w`).join(', ') : '');
+const sized = (src, w, q = 72) => (isRemote(src) ? `${src}?auto=format&fit=max&w=${w}&q=${q}` : src);
+// Pick a photo width for the space it fills: sharp on retina screens (capped at 2x) without wasting data
+const STEPS = [320, 480, 640, 800, 1000, 1200, 1600, 2000, 2600, 3200, 3840];
+const DPR = Math.min(window.devicePixelRatio || 1, 2);
+const snapUp = (w) => STEPS.find((s) => s >= w) || STEPS[STEPS.length - 1];
+const conn = navigator.connection || {};
+const slowNet = !!conn.saveData || /(^|-)2g|3g/.test(conn.effectiveType || '');
 
 document.querySelectorAll('[data-year]').forEach((el) => { el.textContent = new Date().getFullYear(); });
 document.querySelectorAll('[data-city]').forEach((el) => { el.textContent = CONTACT.city; });
@@ -63,7 +68,7 @@ let faceToLeaf = []; // face index -> { leaf, side }
 
 function faceHTML(f) {
   if (f.kind === 'cover') {
-    return `<div class="hinge"></div><img class="cover-art" src="/img/logo-cover.webp" alt="Lamcy Photography and Videography. Capture, Create, Inspire." width="1024" height="682" style="mix-blend-mode:lighten" /><span class="cover-open">Open the book</span>`;
+    return `<div class="hinge"></div><img class="cover-art" src="/img/logo-cover.webp" fetchpriority="high" alt="Lamcy Photography and Videography. Capture, Create, Inspire." width="1024" height="682" style="mix-blend-mode:lighten" /><span class="cover-open">Open the book</span>`;
   }
   if (f.kind === 'back') {
     return `<img src="/img/mark.webp" alt="" width="249" height="96" style="mix-blend-mode:lighten" /><p>Thank you for turning the pages. Let us capture your story next.</p><button class="btn btn-gold" type="button" data-open-booking>Book a session</button>`;
@@ -78,10 +83,10 @@ function faceHTML(f) {
   const head = p.chapter
     ? `<div class="pg-head"><span class="pg-title">${esc(ch.title)}</span><span class="pg-chapter">Chapter ${chapterNo[ch.id]}</span></div>`
     : `<div class="pg-head"><span class="pg-chapter">${esc(ch.title)}</span></div>`;
-  const cell = p.layout === 'pair' ? '(max-width: 860px) 45vw, 230px' : '(max-width: 860px) 90vw, 470px';
+  const share = p.layout === 'pair' ? 0.46 : 0.9; // how much of the page width one photo fills
   const photos = p.photos.map((k) => {
     const ph = PHOTOS[k];
-    return `<button class="ph" type="button" data-photo="${k}" aria-label="View photo: ${esc(ph.alt)}"><img data-src="${esc(sized(ph.src, 1000))}" data-srcset="${esc(srcset(ph.src))}" sizes="${cell}" alt="${esc(ph.alt)}" decoding="async" /><span class="zoom">${ZOOM_SVG}</span></button>`;
+    return `<button class="ph" type="button" data-photo="${k}" aria-label="View photo: ${esc(ph.alt)}"><img data-src="${esc(ph.src)}" data-share="${share}" alt="${esc(ph.alt)}" decoding="async" /><span class="zoom">${ZOOM_SVG}</span></button>`;
   }).join('');
   const quote = p.layout === 'feature' ? `<div><p class="quote">${esc(p.quote)}</p>${p.cta ? '<div class="pg-cta"><button class="btn btn-gold" type="button" data-open-booking>Book a session</button></div>' : ''}</div>` : '';
   return `${head}<div class="pg-photos ${p.layout}">${photos}${quote}</div><div class="pg-foot"><span class="pg-cap">${esc(p.caption || '')}</span><span class="pg-num">${f.n}</span></div>`;
@@ -174,6 +179,7 @@ function setFlipped(n, instant = false) {
     // the leaf being turned goes on top while it moves
     const order = should ? i - before : before - 1 - i;
     leaf._turning = true;
+    leaf.style.visibility = '';
     leaf.style.zIndex = leaves.length + 10 + Math.max(0, order);
     leaf.classList.add('turning');
     leaf.style.transitionDelay = `${Math.max(0, order) * 140}ms`;
@@ -184,6 +190,7 @@ function setFlipped(n, instant = false) {
       leaf.classList.remove('turning');
       leaf.style.transitionDelay = '';
       leaf.style.zIndex = zFor(i, leaf.classList.contains('flipped'));
+      hideBuried();
     }, FLIP_MS + Math.max(0, order) * 140 + 30);
   });
   update();
@@ -198,6 +205,7 @@ function update() {
   prevBtn.disabled = flipped === 0;
   nextBtn.disabled = flipped >= max;
   pageLabel.textContent = labelFor();
+  hideBuried();
   loadNear();
 }
 
@@ -217,18 +225,40 @@ function labelFor() {
   return [name(L), name(R)].filter(Boolean).join(' · ');
 }
 
-// Load photos for the pages on show and the next few, so the book stays light
-function loadNear() {
-  const reach = mode === 'spread' ? 3 : 4;
-  leaves.forEach((leaf, i) => {
-    const near = i >= flipped - reach && i <= flipped + reach;
-    if (!near) return;
-    $$('img[data-src]', leaf).forEach((img) => {
-      if (img.dataset.srcset) img.srcset = img.dataset.srcset;
-      img.src = img.dataset.src;
+// Load photos only where they are needed, so the page opens fast on any connection:
+// nothing until the cover has loaded, then the pages on show first and the next pages in the background.
+let pageReady = document.readyState === 'complete';
+if (!pageReady) window.addEventListener('load', () => { pageReady = true; idle(() => loadNear()); }, { once: true });
+function idle(fn, ms = 400) { return ('requestIdleCallback' in window) ? requestIdleCallback(fn, { timeout: ms * 4 }) : setTimeout(fn, ms); }
+
+function photoUrl(img) {
+  const pw = parseFloat(getComputedStyle(bookEl).getPropertyValue('--pw')) || 420;
+  const w = snapUp(pw * parseFloat(img.dataset.share || 0.9) * DPR);
+  return sized(img.dataset.src, w);
+}
+function loadLeaves(from, to, priority) {
+  for (let i = Math.max(0, from); i <= Math.min(leaves.length - 1, to); i++) {
+    $$('img[data-src]', leaves[i]).forEach((img) => {
+      if ('fetchPriority' in img) img.fetchPriority = priority;
+      img.src = photoUrl(img);
       img.removeAttribute('data-src');
-      img.removeAttribute('data-srcset');
     });
+  }
+}
+let aheadTimer = 0;
+function loadNear() {
+  if (!pageReady || !leaves.length) return;
+  if (flipped === 0) { idle(() => loadLeaves(0, 1, 'low'), 1200); return; } // closed: quietly get the first pages ready
+  loadLeaves(flipped - 1, flipped + 1, 'high');
+  if (aheadTimer) clearTimeout(aheadTimer);
+  aheadTimer = setTimeout(() => idle(() => loadLeaves(flipped - 2, flipped + 3, 'low')), 700);
+}
+
+// Leaves buried under the top pages are not drawn, so turning pages stays smooth on slower phones
+function hideBuried() {
+  leaves.forEach((leaf, i) => {
+    if (leaf._turning) { leaf.style.visibility = ''; return; }
+    leaf.style.visibility = (i < flipped - 2 || i > flipped + 1) ? 'hidden' : '';
   });
 }
 
@@ -307,7 +337,9 @@ function captionFor(k) {
 function loadHiRes(k) {
   const src = PHOTOS[k].src;
   if (!isRemote(src)) return;
-  const want = sized(src, 3840, 82); // 4K
+  if (slowNet) return; // keep the sharp page-size photo on very slow connections or data saver
+  const longest = Math.max(screen.width || 0, screen.height || 0, innerWidth, innerHeight);
+  const want = sized(src, snapUp(Math.min(3840, longest * DPR)), 82); // up to 4K, matched to the screen
   const hi = new Image();
   hi.decoding = 'async';
   hi.onload = () => { if (lbKey === k) lbImg.src = want; };
@@ -318,7 +350,7 @@ async function openViewer(k, fromImg) {
   lbKey = k;
   lbReturn = document.activeElement;
   lbOrigin = fromImg;
-  const start = fromImg && fromImg.currentSrc ? fromImg.currentSrc : sized(PHOTOS[k].src, 1600);
+  const start = fromImg && fromImg.currentSrc ? fromImg.currentSrc : sized(PHOTOS[k].src, snapUp(Math.min(innerWidth, 1000) * DPR));
   lbImg.style.transition = 'none';
   lbImg.style.transform = '';
   lbImg.alt = PHOTOS[k].alt;
@@ -375,7 +407,7 @@ function stepViewer(d) {
   lbImg.style.opacity = '0';
   setTimeout(() => {
     lbImg.style.transform = '';
-    lbImg.src = sized(PHOTOS[k].src, 1600);
+    lbImg.src = sized(PHOTOS[k].src, snapUp(Math.min(innerWidth, 1000) * DPR));
     lbImg.alt = PHOTOS[k].alt;
     lbCap.innerHTML = captionFor(k);
     lbImg.onload = () => { lbImg.style.opacity = '1'; lbImg.onload = null; };

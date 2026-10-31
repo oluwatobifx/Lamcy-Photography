@@ -356,3 +356,9 @@ input[type="date"], input[type="time"] { color-scheme: dark; }
 :root[data-theme="light"] .total-row { border-top-color: rgba(150, 105, 20, .3); }
 :root[data-theme="light"] .form-error { background: rgba(180, 50, 31, .08); border-color: rgba(180, 50, 31, .35); }
 :root[data-theme="light"] .side-tab { box-shadow: -8px 0 22px -12px rgba(120, 80, 0, .6); }
+
+/* ---------- Performance ---------- */
+.leaf.turning { will-change: transform; }
+.ph { background: #e7dfcd linear-gradient(110deg, #e7dfcd 30%, #efe8d8 50%, #e7dfcd 70%) 0 0 / 300% 100%; }
+@media (prefers-reduced-motion: no-preference) { .ph:not(:has(img.loaded)) { animation: shimmer 1.6s linear infinite; } }
+@keyframes shimmer { to { background-position: -150% 0; } }
