@@ -2,7 +2,7 @@
 //  Lamcy Photography & Videography: page behaviour
 //  The book, the photo viewer and the booking panel.
 // =============================================================
-import { CONTACT, CURRENCY, PHOTOS, CHAPTERS, PAGES, SERVICES } from './data.js?v=1';
+import { CONTACT, CURRENCY, PHOTOS, CHAPTERS, PAGES, SERVICES } from './data.js?v=2';
 
 const $ = (s, el = document) => el.querySelector(s);
 const $$ = (s, el = document) => [...el.querySelectorAll(s)];
@@ -645,3 +645,37 @@ document.addEventListener('keydown', (e) => {
   if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
   else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
 });
+
+/* ---------------- Theme: system → light → dark ---------------- */
+(function themeSwitch() {
+  const btn = document.getElementById('theme-btn');
+  if (!btn) return;
+  const root = document.documentElement;
+  const mq = window.matchMedia ? window.matchMedia('(prefers-color-scheme: light)') : null;
+  const order = ['system', 'light', 'dark'];
+  const names = { system: 'System', light: 'Light', dark: 'Dark' };
+  const meta = document.querySelector('meta[name="theme-color"]');
+  let pref = root.getAttribute('data-theme-pref') || 'system';
+
+  function apply() {
+    const dark = pref === 'dark' || (pref === 'system' && !(mq && mq.matches));
+    root.setAttribute('data-theme', dark ? 'dark' : 'light');
+    root.setAttribute('data-theme-pref', pref);
+    if (meta) meta.setAttribute('content', dark ? '#050505' : '#f7f2e8');
+    const next = order[(order.indexOf(pref) + 1) % order.length];
+    btn.setAttribute('aria-label', `Theme: ${names[pref]}. Switch to ${names[next].toLowerCase()}`);
+    btn.title = `Theme: ${names[pref]}`;
+    btn.querySelector('.theme-txt').textContent = names[pref];
+  }
+
+  btn.addEventListener('click', () => {
+    pref = order[(order.indexOf(pref) + 1) % order.length];
+    try { localStorage.setItem('lamcy-theme', pref); } catch (e) { /* storage unavailable */ }
+    apply();
+  });
+  if (mq) {
+    const onChange = () => { if (pref === 'system') apply(); };
+    if (mq.addEventListener) mq.addEventListener('change', onChange); else if (mq.addListener) mq.addListener(onChange);
+  }
+  apply();
+})();

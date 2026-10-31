@@ -110,7 +110,7 @@ export const SERVICES = [
         { label: 'Premium Studio + Outdoor: 35 edited photos', price: 150000 },
       ] },
       { type: 'number', id: 'hours', label: 'Duration', unit: 'hour', min: 1, max: 10, value: 1, included: 1, unitPrice: 25000, note: 'First hour included' },
-      { type: 'number', id: 'outfits', label: 'Outfit changes', unit: 'outfit', min: 1, max: 8, value: 1, included: 1, unitPrice: 10000, note: 'One outfit included' },
+      { type: 'number', id: 'outfits', label: 'Outfit changes', unit: 'outfit', min: 5, max: 10, value: 5, included: 5, unitPrice: 10000, note: 'Five outfits included' },
       { type: 'addons', id: 'extras', label: 'Extras', options: [
         { label: 'Makeup artist', price: 30000 },
         { label: 'Printed photobook (20 pages)', price: 45000 },
